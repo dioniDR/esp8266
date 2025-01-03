@@ -8,14 +8,18 @@ const char* password = "hsx2geazxcwufy5";
 ESP8266WebServer server(80);
 
 const int ledPins[] = {5, 4, 0}; // Pines GPIO donde están conectados los LEDs adicionales
-const int wifiLedPin = 2; // Pin GPIO2 para el indicador de conexión WiFi
+const int wifiLedPin = 2;        // Pin GPIO2 para el indicador de conexión WiFi
+
+unsigned long lastReconnectAttempt = 0; // Último intento de reconexión
 
 void handleRoot() {
-    String html = "<html><body><h1>Control de LEDs</h1>";
+    String html = F("<html><body><h1>Control de LEDs</h1>");
+    String wifiStatus = (WiFi.status() == WL_CONNECTED) ? "Conectado" : "Reconectando...";
+    html += "<p>Estado del WiFi: <strong>" + wifiStatus + "</strong></p>";
     for (int i = 0; i < 3; i++) {
-        html += "<p>LED " + String(i+1) + ": <a href=\"/on" + String(i) + "\">ON</a> <a href=\"/off" + String(i) + "\">OFF</a></p>";
+        html += "<p>LED " + String(i + 1) + ": <a href=\"/on" + String(i) + "\">ON</a> <a href=\"/off" + String(i) + "\">OFF</a></p>";
     }
-    html += "</body></html>";
+    html += F("</body></html>");
     server.send(200, "text/html", html);
 }
 
@@ -68,11 +72,19 @@ void setup() {
 }
 
 void loop() {
+    // Verifica el estado del WiFi
     if (WiFi.status() != WL_CONNECTED) {
-        digitalWrite(wifiLedPin, LOW); // Apaga el LED si se pierde la conexión
-        connectToWiFi();
+        unsigned long currentMillis = millis();
+        if (currentMillis - lastReconnectAttempt > 5000) { // Intenta reconectar cada 5 segundos
+            lastReconnectAttempt = currentMillis;
+            Serial.println("Reconectando al WiFi...");
+            digitalWrite(wifiLedPin, LOW); // Apaga el LED si se pierde la conexión
+            connectToWiFi();
+        }
     } else {
-        digitalWrite(wifiLedPin, HIGH); // Asegura que el LED esté encendido si está conectado
+        digitalWrite(wifiLedPin, HIGH); // Enciende el LED si está conectado
     }
+
+    // Manejo de solicitudes HTTP
     server.handleClient();
 }
