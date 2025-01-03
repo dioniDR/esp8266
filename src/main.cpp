@@ -1,18 +1,14 @@
 #include <Arduino.h>
 
-// put function declarations here:
-int myFunction(int, int);
+const int ledPin = 2; // Pin GPIO2 donde está conectado el LED
 
 void setup() {
-  // put your setup code here, to run once:
-  int result = myFunction(2, 3);
+    pinMode(ledPin, OUTPUT); // Configura el pin GPIO2 como salida
 }
 
 void loop() {
-  // put your main code here, to run repeatedly:
-}
-
-// put function definitions here:
-int myFunction(int x, int y) {
-  return x + y;
+    digitalWrite(ledPin, HIGH); // Enciende el LED
+    delay(1000);                // Espera 1 segundo
+    digitalWrite(ledPin, LOW);  // Apaga el LED
+    delay(1000);                // Espera 1 segundo
 }
