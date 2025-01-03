@@ -1,94 +1,117 @@
 #include <Arduino.h>
 #include <ESP8266WiFi.h>
-#include <ESP8266WebServer.h>
+#include <ESPAsyncWebServer.h>
+#include <ESPAsyncTCP.h>
+#include <LittleFS.h>
 
-const char* ssid = "Pixel_9615";          // Cambia por el SSID de tu hotspot
-const char* password = "hsx2geazxcwufy5"; // Cambia por la contraseña de tu hotspot
+const char* ssid = "Pixel_9615";
+const char* password = "hsx2geazxcwufy5";
 
-ESP8266WebServer server(80);
+AsyncWebServer server(80);
 
-const int ledPins[] = {5, 4, 0}; // Pines GPIO donde están conectados los LEDs adicionales
-const int wifiLedPin = 2;        // Pin GPIO2 para el indicador de conexión WiFi
+// Configuración de pines
+const int ledPins[] = {5, 4, 0};  // D1, D2, D3
+const int wifiLedPin = 2;         // LED_BUILTIN en GPIO2
+unsigned long startTime = 0;       // Para calcular el tiempo de actividad
 
-unsigned long lastReconnectAttempt = 0; // Último intento de reconexión
-
-void handleRoot() {
-    String html = F("<html><body><h1>Control de LEDs</h1>");
-    String wifiStatus = (WiFi.status() == WL_CONNECTED) ? "Conectado" : "Reconectando...";
-    html += "<p>Estado del WiFi: <strong>" + wifiStatus + "</strong></p>";
-    for (int i = 0; i < 3; i++) {
-        html += "<p>LED " + String(i + 1) + ": <a href=\"/on" + String(i) + "\">ON</a> <a href=\"/off" + String(i) + "\">OFF</a></p>";
-    }
-    html += F("</body></html>");
-    server.send(200, "text/html", html);
-}
-
-void handleLEDOn(int ledIndex) {
-    digitalWrite(ledPins[ledIndex], HIGH);
-    handleRoot();
-}
-
-void handleLEDOff(int ledIndex) {
-    digitalWrite(ledPins[ledIndex], LOW);
-    handleRoot();
-}
-
-void connectToWiFi() {
-    WiFi.begin(ssid, password);
-    Serial.print("Connecting to ");
-    Serial.println(ssid);
-
-    while (WiFi.status() != WL_CONNECTED) {
-        delay(500);
-        Serial.print(".");
-        digitalWrite(wifiLedPin, LOW); // Apaga el LED mientras intenta conectarse
-    }
-
-    Serial.println("");
-    Serial.println("WiFi connected");
-    Serial.print("Dirección IP: ");
-    Serial.println(WiFi.localIP()); // Imprime la IP en el monitor serial
-    digitalWrite(wifiLedPin, HIGH); // Enciende el LED al conectarse
-}
-
-void setup() {
-    Serial.begin(115200);
+void setupLEDs() {
     pinMode(wifiLedPin, OUTPUT);
-    digitalWrite(wifiLedPin, LOW); // Asegura que el LED esté apagado al inicio
-
+    digitalWrite(wifiLedPin, LOW);
+    
     for (int i = 0; i < 3; i++) {
         pinMode(ledPins[i], OUTPUT);
         digitalWrite(ledPins[i], LOW);
     }
+}
 
-    connectToWiFi();
+void setupFileSystem() {
+    if (!LittleFS.begin()) {
+        Serial.println("Error montando LittleFS");
+        return;
+    }
+    Serial.println("Sistema de archivos montado correctamente");
+}
 
-    server.on("/", handleRoot);
+void connectToWiFi() {
+    WiFi.begin(ssid, password);
+    Serial.print("Conectando a WiFi");
+    
+    while (WiFi.status() != WL_CONNECTED) {
+        digitalWrite(wifiLedPin, LOW);
+        delay(500);
+        Serial.print(".");
+    }
+    
+    digitalWrite(wifiLedPin, HIGH);
+    Serial.println("\nConectado al WiFi!");
+    Serial.print("Dirección IP: ");
+    Serial.println(WiFi.localIP());
+}
+
+void setupServer() {
+    // Servir archivos estáticos
+    server.serveStatic("/", LittleFS, "/").setDefaultFile("index.html");
+
+    // API para obtener el estado del sistema
+    server.on("/status", HTTP_GET, [](AsyncWebServerRequest *request) {
+        String json = "{";
+        json += "\"wifi\":" + String(WiFi.status() == WL_CONNECTED ? "true" : "false") + ",";
+        json += "\"ip\":\"" + WiFi.localIP().toString() + "\",";
+        json += "\"uptime\":" + String((millis() - startTime) / 1000) + ",";
+        json += "\"leds\":[";
+        for (int i = 0; i < 3; i++) {
+            if (i > 0) json += ",";
+            json += String(digitalRead(ledPins[i]) == HIGH ? "true" : "false");
+        }
+        json += "]}";
+        request->send(200, "application/json", json);
+    });
+
+    // Control de LEDs
     for (int i = 0; i < 3; i++) {
-        server.on("/on" + String(i), [i]() { handleLEDOn(i); });
-        server.on("/off" + String(i), [i]() { handleLEDOff(i); });
+        // Endpoint para encender LED
+        server.on(("/on" + String(i)).c_str(), HTTP_GET, [i](AsyncWebServerRequest *request) {
+            digitalWrite(ledPins[i], HIGH);
+            request->send(200, "text/plain", "LED " + String(i) + " encendido");
+        });
+
+        // Endpoint para apagar LED
+        server.on(("/off" + String(i)).c_str(), HTTP_GET, [i](AsyncWebServerRequest *request) {
+            digitalWrite(ledPins[i], LOW);
+            request->send(200, "text/plain", "LED " + String(i) + " apagado");
+        });
     }
 
+    // Manejador para archivos no encontrados
+    server.onNotFound([](AsyncWebServerRequest *request) {
+        request->send(404, "text/plain", "Archivo no encontrado");
+    });
+
     server.begin();
-    Serial.println("HTTP server started");
+    Serial.println("Servidor HTTP iniciado");
+}
+
+void setup() {
+    Serial.begin(115200);
+    Serial.println("\nIniciando sistema...");
+    
+    startTime = millis();  // Registrar tiempo de inicio
+    setupLEDs();
+    setupFileSystem();
+    connectToWiFi();
+    setupServer();
+    
+    Serial.println("Sistema iniciado correctamente");
 }
 
 void loop() {
-    // Verifica el estado del WiFi
+    // Verificar conexión WiFi
     if (WiFi.status() != WL_CONNECTED) {
-        unsigned long currentMillis = millis();
-        if (currentMillis - lastReconnectAttempt > 5000) { // Intenta reconectar cada 5 segundos
-            lastReconnectAttempt = currentMillis;
-            Serial.println("Reconectando al WiFi...");
-            digitalWrite(wifiLedPin, LOW); // Apaga el LED si se pierde la conexión
-            connectToWiFi();
-        }
+        digitalWrite(wifiLedPin, LOW);
+        Serial.println("Conexión WiFi perdida, reconectando...");
+        WiFi.reconnect();
+        delay(5000);
     } else {
-        digitalWrite(wifiLedPin, HIGH); // Enciende el LED si está conectado
-        Serial.print("Dirección IP (desde loop): ");
-        Serial.println(WiFi.localIP()); // Imprime la IP continuamente en el monitor serial
+        digitalWrite(wifiLedPin, HIGH);
     }
-
-    // Manejo de solicitudes HTTP
-    server.handleClient();
 }
