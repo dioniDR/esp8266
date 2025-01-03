@@ -2,8 +2,8 @@
 #include <ESP8266WiFi.h>
 #include <ESP8266WebServer.h>
 
-const char* ssid = "Pixel_9615";
-const char* password = "hsx2geazxcwufy5";
+const char* ssid = "Pixel_9615";          // Cambia por el SSID de tu hotspot
+const char* password = "hsx2geazxcwufy5"; // Cambia por la contraseña de tu hotspot
 
 ESP8266WebServer server(80);
 
@@ -46,6 +46,8 @@ void connectToWiFi() {
 
     Serial.println("");
     Serial.println("WiFi connected");
+    Serial.print("Dirección IP: ");
+    Serial.println(WiFi.localIP()); // Imprime la IP en el monitor serial
     digitalWrite(wifiLedPin, HIGH); // Enciende el LED al conectarse
 }
 
@@ -83,6 +85,8 @@ void loop() {
         }
     } else {
         digitalWrite(wifiLedPin, HIGH); // Enciende el LED si está conectado
+        Serial.print("Dirección IP (desde loop): ");
+        Serial.println(WiFi.localIP()); // Imprime la IP continuamente en el monitor serial
     }
 
     // Manejo de solicitudes HTTP
