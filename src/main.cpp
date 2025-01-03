@@ -28,13 +28,7 @@ void handleLEDOff(int ledIndex) {
     handleRoot();
 }
 
-void setup() {
-    Serial.begin(115200);
-    for (int i = 0; i < 4; i++) {
-        pinMode(ledPins[i], OUTPUT);
-        digitalWrite(ledPins[i], LOW);
-    }
-
+void connectToWiFi() {
     WiFi.begin(ssid, password);
     Serial.print("Connecting to ");
     Serial.println(ssid);
@@ -42,11 +36,22 @@ void setup() {
     while (WiFi.status() != WL_CONNECTED) {
         delay(500);
         Serial.print(".");
+        digitalWrite(ledPins[0], LOW); // Apaga el LED mientras intenta conectarse
     }
 
     Serial.println("");
     Serial.println("WiFi connected");
-    digitalWrite(ledPins[0], HIGH); // Enciende el LED en GPIO2 al conectarse
+    digitalWrite(ledPins[0], HIGH); // Enciende el LED al conectarse
+}
+
+void setup() {
+    Serial.begin(115200);
+    for (int i = 0; i < 4; i++) {
+        pinMode(ledPins[i], OUTPUT);
+        digitalWrite(ledPins[i], LOW);
+    }
+
+    connectToWiFi();
 
     server.on("/", handleRoot);
     for (int i = 0; i < 4; i++) {
@@ -59,5 +64,8 @@ void setup() {
 }
 
 void loop() {
+    if (WiFi.status() != WL_CONNECTED) {
+        connectToWiFi();
+    }
     server.handleClient();
 }
